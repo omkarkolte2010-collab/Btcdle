@@ -1,0 +1,221 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTCDLE - Bitcoin Trading Game</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080d18;color:#fff;font-family:Arial,sans-serif}
+header{padding:18px 5%;display:flex;justify-content:space-between;border-bottom:1px solid #263044}
+.logo{font-size:25px;font-weight:bold;color:#f5b942}
+main{max-width:1100px;margin:auto;padding:20px}
+.card{background:#111a2b;border:1px solid #26344b;border-radius:12px;padding:18px;margin-bottom:16px}
+.price{font-size:32px;font-weight:bold}
+.green{color:#16d995}.red{color:#ff5268}
+canvas{width:100%;height:260px}
+.controls{display:flex;gap:10px;flex-wrap:wrap}
+button,select,input{padding:13px;border:0;border-radius:8px;font-size:15px}
+button{cursor:pointer;color:white;font-weight:bold}
+.buy{background:#079c68;flex:1}
+.sell{background:#d83c50;flex:1}
+input,select{background:#202c40;color:white;max-width:150px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
+.small{color:#9baac1;font-size:13px}
+table{width:100%;border-collapse:collapse}
+td,th{text-align:left;padding:10px;border-bottom:1px solid #26344b}
+</style>
+</head>
+<body>
+<header>
+<div class="logo">BTCDLE</div>
+<div>BTC/USD SIMULATOR</div>
+</header>
+<main>
+<div class="card">
+<div class="small">ACCOUNT BALANCE</div>
+<div class="price" id="balance">$10,000.00</div>
+<div class="small">Starting Capital: $10,000</div>
+</div>
+
+<div class="card">
+<div class="small">BTC/USD HISTORICAL SIMULATION</div>
+<div class="price" id="price">$67,420.00</div>
+<div id="change" class="green">+0.00%</div>
+<canvas id="chart"></canvas>
+<div class="small">Accelerated simulation · 20–30 second sessions</div>
+</div>
+
+<div class="card">
+<h3>Trading Panel</h3>
+<div class="controls">
+<select id="lots">
+<option value="1">1 Lot</option>
+<option value="2">2 Lots</option>
+<option value="3">3 Lots</option>
+<option value="4">4 Lots</option>
+<option value="5">5 Lots</option>
+</select>
+<input id="sl" type="number" placeholder="Stop Loss">
+<input id="tp" type="number" placeholder="Take Profit">
+</div>
+<br>
+<div class="controls">
+<button class="buy" onclick="trade('BUY')">BUY ▲</button>
+<button class="sell" onclick="trade('SELL')">SELL ▼</button>
+</div>
+<p class="small">Daily lot limit: <b id="used">0/5</b></p>
+<p id="message" class="small">Ready to trade</p>
+</div>
+
+<div class="card">
+<h3>Trading Statistics</h3>
+<div class="stats">
+<div><div class="small">Overall P&L</div><b id="pnl">$0.00</b></div>
+<div><div class="small">Total Trades</div><b id="count">0</b></div>
+<div><div class="small">Lots Used</div><b id="lotused">0/5</b></div>
+<div><div class="small">Winning Trades</div><b id="wins">0</b></div>
+<div><div class="small">Losing Trades</div><b id="losses">0</b></div>
+<div><div class="small">Win Rate</div><b id="rate">0%</b></div>
+<div><div class="small">SL Hit</div><b id="slhits">0</b></div>
+<div><div class="small">TP Hit</div><b id="tphits">0</b></div>
+<div><div class="small">Open Trades</div><b id="open">0</b></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Trade History</h3>
+<div id="history" class="small">No trades yet.</div>
+</div>
+
+<div class="card">
+<h3>Global Leaderboard 🏆</h3>
+<table>
+<thead><tr><th>Rank</th><th>Username</th><th>Overall P&L</th></tr></thead>
+<tbody id="leaderboard">
+<tr><td>1</td><td>Omkar</td><td class="green">+$999</td></tr>
+<tr><td>2</td><td>om</td><td class="green">+$200</td></tr>
+<tr><td>3</td><td>omshree</td><td class="red">-$100</td></tr>
+</tbody>
+</table>
+<p class="small">Demo leaderboard. Global player accounts and rankings require a shared database.</p>
+</div>
+</main>
+
+<script>
+let balance=10000,price=67420,used=0,pnl=0;
+let wins=0,losses=0,slHits=0,tpHits=0;
+let trades=[],candles=Array.from({length:50},()=>price+(Math.random()-.5)*300);
+let sessionEnd=0;
+
+function update(){
+document.getElementById('balance').textContent='$'+balance.toFixed(2);
+document.getElementById('price').textContent='$'+price.toFixed(2);
+let p=document.getElementById('pnl');
+p.textContent=(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(2);
+p.className=pnl>=0?'green':'red';
+document.getElementById('used').textContent=used+'/5';
+document.getElementById('lotused').textContent=used+'/5';
+document.getElementById('count').textContent=trades.length;
+document.getElementById('wins').textContent=wins;
+document.getElementById('losses').textContent=losses;
+document.getElementById('slhits').textContent=slHits;
+document.getElementById('tphits').textContent=tpHits;
+document.getElementById('open').textContent=trades.filter(t=>!t.closed).length;
+document.getElementById('rate').textContent=trades.length?(wins/trades.length*100).toFixed(1)+'%':'0%';
+draw();
+}
+
+function trade(side){
+let lots=Number(document.getElementById('lots').value);
+if(used+lots>5){msg('Daily 5-lot limit reached!');return}
+let sl=Number(document.getElementById('sl').value);
+let tp=Number(document.getElementById('tp').value);
+used+=lots;
+trades.push({side,lots,entry:price,sl,tp,closed:false});
+msg(side+' opened at $'+price.toFixed(2));
+renderHistory();update();
+}
+
+function msg(s){document.getElementById('message').textContent=s}
+
+function closeTrade(t,exit,reason){
+if(t.closed)return;
+t.closed=true;
+let diff=t.side==='BUY'?exit-t.entry:t.entry-exit;
+let profit=diff*t.lots;
+balance+=profit;pnl+=profit;
+if(profit>=0)wins++;else losses++;
+if(reason==='SL')slHits++;
+if(reason==='TP')tpHits++;
+msg(reason+' hit | '+(profit>=0?'+$':'-$')+Math.abs(profit).toFixed(2));
+renderHistory();update();
+}
+
+function renderHistory(){
+let box=document.getElementById('history');
+box.innerHTML='';
+if(!trades.length){box.textContent='No trades yet.';return}
+trades.slice().reverse().forEach(t=>{
+let d=document.createElement('div');
+d.style.padding='10px 0';
+d.style.borderBottom='1px solid #26344b';
+d.textContent=t.side+' | '+t.lots+' lots | Entry $'+t.entry.toFixed(2)+' | '+(t.closed?'Closed':'OPEN');
+box.appendChild(d);
+});
+}
+
+function draw(){
+let c=document.getElementById('chart');
+let ctx=c.getContext('2d');
+let w=c.clientWidth,h=260;
+c.width=w*devicePixelRatio;c.height=h*devicePixelRatio;
+ctx.scale(devicePixelRatio,devicePixelRatio);
+let min=Math.min(...candles),max=Math.max(...candles);
+ctx.strokeStyle='#16d995';ctx.lineWidth=2;ctx.beginPath();
+candles.forEach((v,i)=>{
+let x=i*w/(candles.length-1);
+let y=h-(v-min)/(max-min||1)*(h-20)-10;
+if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+});
+ctx.stroke();
+}
+
+function marketTick(){
+let old=price;
+price=Math.max(100,price+(Math.random()-.49)*35);
+candles.push(price);candles.shift();
+let change=(price-old)/old*100;
+let el=document.getElementById('change');
+el.textContent=(change>=0?'+':'')+change.toFixed(4)+'%';
+el.className=change>=0?'green':'red';
+
+trades.filter(t=>!t.closed).forEach(t=>{
+if(t.side==='BUY'){
+if(t.sl>0&&price<=t.sl)closeTrade(t,t.sl,'SL');
+else if(t.tp>0&&price>=t.tp)closeTrade(t,t.tp,'TP');
+}else{
+if(t.sl>0&&price>=t.sl)closeTrade(t,t.sl,'SL');
+else if(t.tp>0&&price<=t.tp)closeTrade(t,t.tp,'TP');
+}
+});
+update();
+}
+
+let ticks=0;
+setInterval(()=>{
+marketTick();ticks++;
+if(ticks%30===0){
+msg('Simulation running | '+trades.filter(t=>!t.closed).length+' open trades');
+}
+},700);
+
+function newDay(){
+used=0;ticks=0;
+msg('New trading day started. 5 lots available.');
+}
+update();
+</script>
+</body>
+</html>
